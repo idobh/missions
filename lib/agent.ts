@@ -362,28 +362,36 @@ ${spacesText || "(אין מרחבים)"}
 - אל תציג מזהים מספריים למשתמש.`;
 }
 
-interface OAMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
-  tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
-  tool_call_id?: string;
-}
+// Responses API: gpt-6 models only support function tools here, not in chat/completions.
+const RESPONSE_TOOLS = TOOLS.map((t) => ({ type: "function", strict: false, ...t.function }));
 
-async function callOpenAI(messages: OAMessage[]) {
+interface FunctionCall { type: "function_call"; call_id: string; name: string; arguments: string }
+interface OAResponse { id: string; output: ({ type: string } & Record<string, unknown>)[]; output_text?: string }
+
+async function callOpenAI(body: Record<string, unknown>): Promise<OAResponse> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY לא מוגדר");
   const base = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-  const res = await fetch(`${base}/chat/completions`, {
+  const res = await fetch(`${base}/responses`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: modelName(), messages, tools: TOOLS, tool_choice: "auto" }),
+    body: JSON.stringify({ model: modelName(), tools: RESPONSE_TOOLS, store: true, ...body }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`OpenAI ${res.status}: ${text.slice(0, 400)}`);
   }
-  const data = await res.json();
-  return data.choices[0].message as OAMessage;
+  return res.json();
+}
+
+function outputText(r: OAResponse): string {
+  if (typeof r.output_text === "string" && r.output_text) return r.output_text;
+  return r.output
+    .filter((o) => o.type === "message")
+    .flatMap((o) => (o.content as { type: string; text?: string }[]) || [])
+    .filter((c) => c.type === "output_text")
+    .map((c) => c.text)
+    .join("\n");
 }
 
 export function modelName() {
@@ -401,28 +409,28 @@ export async function runAgent(history: ChatMessage[], scope: AgentScope): Promi
   const ctx = await buildCtx(scope);
   if (scope.type === "space" && !ctx.spaces.length) return { reply: "המרחב שנבחר לא קיים.", changed: false };
 
-  const messages: OAMessage[] = [
-    { role: "system", content: systemPrompt(ctx) },
-    ...history.slice(-20).map((m) => ({ role: m.role, content: m.content }) as OAMessage),
-  ];
+  let resp = await callOpenAI({
+    instructions: systemPrompt(ctx),
+    input: history.slice(-20).map((m) => ({ role: m.role, content: m.content })),
+  });
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    const msg = await callOpenAI(messages);
-    messages.push({ role: "assistant", content: msg.content ?? null, ...(msg.tool_calls ? { tool_calls: msg.tool_calls } : {}) });
-    if (!msg.tool_calls?.length) {
-      return { reply: (msg.content || "").trim() || "בוצע.", changed: ctx.changed };
+    const calls = resp.output.filter((o) => o.type === "function_call") as unknown as FunctionCall[];
+    if (!calls.length) {
+      return { reply: outputText(resp).trim() || "בוצע.", changed: ctx.changed };
     }
-    for (let i = 0; i < msg.tool_calls.length; i++) {
-      const call = msg.tool_calls[i];
+    const outputs: { type: "function_call_output"; call_id: string; output: string }[] = [];
+    for (const call of calls) {
       let args: Record<string, unknown> = {};
-      try { args = JSON.parse(call.function.arguments || "{}"); } catch { /* keep empty */ }
-      const out = await execTool(call.function.name, args, ctx);
+      try { args = JSON.parse(call.arguments || "{}"); } catch { /* keep empty */ }
+      const out = await execTool(call.name, args, ctx);
       if ("pending" in out) {
         // Stop here: the user decides in the chat with approve / reject buttons.
         return { reply: out.pending.summary, changed: ctx.changed, pending: out.pending };
       }
-      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(out.result) });
+      outputs.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(out.result) });
     }
+    resp = await callOpenAI({ instructions: systemPrompt(ctx), previous_response_id: resp.id, input: outputs });
   }
   return { reply: "לא הצלחתי להשלים את הבקשה. נסה לנסח אותה אחרת.", changed: ctx.changed };
 }
