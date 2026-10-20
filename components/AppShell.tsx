@@ -9,15 +9,15 @@ import { TaskModal } from "./TaskModal";
 import { SpaceModal } from "./SpaceModal";
 import { ChatWidget } from "./ChatWidget";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, authEnabled }: { children: ReactNode; authEnabled: boolean }) {
   return (
     <DataProvider>
-      <Shell>{children}</Shell>
+      <Shell authEnabled={authEnabled}>{children}</Shell>
     </DataProvider>
   );
 }
 
-function Shell({ children }: { children: ReactNode }) {
+function Shell({ children, authEnabled }: { children: ReactNode; authEnabled: boolean }) {
   const { spaces, setSpaceModal, toastMsg } = useStore();
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
@@ -69,7 +69,7 @@ function Shell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="sidebar-foot">
-          <button className="nav-item" onClick={logout}><Icon.logout size={16} /> יציאה</button>
+          {authEnabled && <button className="nav-item" onClick={logout}><Icon.logout size={16} /> יציאה</button>}
         </div>
       </nav>
       {navOpen && <div className="nav-scrim" onClick={() => setNavOpen(false)} />}

@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, isValidSession } from "./lib/auth";
 
 export async function proxy(request: NextRequest) {
+  // No APP_PASSWORD configured = open access, no login screen.
+  if (!process.env.APP_PASSWORD) return NextResponse.next();
   const ok = await isValidSession(request.cookies.get(SESSION_COOKIE)?.value);
   if (ok) return NextResponse.next();
   if (request.nextUrl.pathname.startsWith("/api/")) {

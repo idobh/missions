@@ -4,7 +4,7 @@ import { SESSION_COOKIE, sessionToken } from "@/lib/auth";
 export async function POST(req: Request) {
   const { password } = await req.json().catch(() => ({ password: "" }));
   const expected = process.env.APP_PASSWORD;
-  if (!expected) return NextResponse.json({ error: "APP_PASSWORD לא מוגדר בשרת" }, { status: 500 });
+  if (!expected) return NextResponse.json({ ok: true }); // no password configured: open access
   if (typeof password !== "string" || password !== expected) {
     await new Promise((r) => setTimeout(r, 400));
     return NextResponse.json({ error: "סיסמה שגויה" }, { status: 401 });
