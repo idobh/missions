@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { AgentScope, Space, Task } from "@/lib/types";
+import { isDesignId, LS_VERSION, LS_VOTES, type DesignId } from "./ab/versions";
 
 export async function api<T = unknown>(url: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const res = await fetch(url, {
@@ -36,6 +37,12 @@ interface Store {
   toastMsg: string | null;
   scope: AgentScope;
   setScope: (s: AgentScope) => void;
+  chatOpen: boolean;
+  setChatOpen: (open: boolean) => void;
+  design: DesignId; // dashboard A/B version, saved in this browser
+  setDesign: (d: DesignId) => void;
+  votes: Partial<Record<DesignId, boolean>>;
+  toggleVote: (d: DesignId) => void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -48,6 +55,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [spaceModal, setSpaceModal] = useState<Store["spaceModal"]>(null);
   const [toastMsg, setToast] = useState<string | null>(null);
   const [scope, setScope] = useState<AgentScope>({ type: "all" });
+  const [chatOpen, setChatOpen] = useState(false);
+  const [design, setDesignState] = useState<DesignId>("orig");
+  const [votes, setVotes] = useState<Store["votes"]>({});
+
+  // Read the saved A/B choice after mount so server and client render the same first frame.
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(LS_VERSION);
+      if (isDesignId(v)) setDesignState(v);
+      setVotes(JSON.parse(localStorage.getItem(LS_VOTES) || "{}"));
+    } catch { /* ignore */ }
+  }, []);
+
+  const setDesign = useCallback((d: DesignId) => {
+    setDesignState(d);
+    try { localStorage.setItem(LS_VERSION, d); } catch { /* ignore */ }
+    window.scrollTo(0, 0);
+  }, []);
+
+  const toggleVote = useCallback((d: DesignId) => {
+    setVotes((cur) => {
+      const next = { ...cur, [d]: !cur[d] };
+      try { localStorage.setItem(LS_VOTES, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   const refreshSpaces = useCallback(async () => {
     const s = await api<Space[]>("/api/spaces");
@@ -69,6 +102,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     spaceModal, setSpaceModal,
     toast, toastMsg,
     scope, setScope,
+    chatOpen, setChatOpen,
+    design, setDesign, votes, toggleVote,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

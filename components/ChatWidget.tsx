@@ -34,9 +34,9 @@ const SUGGESTIONS = [
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-export function ChatWidget() {
-  const { spaces, scope, setScope, bump } = useStore();
-  const [open, setOpen] = useState(false);
+/** `showFab` is off when the page draws its own agent button (the A/B dashboard designs). */
+export function ChatWidget({ showFab = true }: { showFab?: boolean }) {
+  const { spaces, scope, setScope, bump, chatOpen: open, setChatOpen: setOpen } = useStore();
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -136,11 +136,13 @@ export function ChatWidget() {
 
   return (
     <>
-      <button className={`fab ${open ? "fab-hidden" : ""}`} onClick={() => setOpen(true)} aria-label="פתיחת צ'אט עם סוכן ה-AI">
-        <span className="fab-icon"><Icon.sparkles size={22} /></span>
-        <span className="fab-text">שאל את הסוכן</span>
-        <span className="fab-ping" />
-      </button>
+      {showFab && (
+        <button className={`fab ${open ? "fab-hidden" : ""}`} onClick={() => setOpen(true)} aria-label="פתיחת צ'אט עם סוכן ה-AI">
+          <span className="fab-icon"><Icon.sparkles size={22} /></span>
+          <span className="fab-text">שאל את הסוכן</span>
+          <span className="fab-ping" />
+        </button>
+      )}
 
       <aside className={`chat ${open ? "chat-open" : ""}`} aria-hidden={!open} aria-label="צ'אט עם סוכן AI">
         <header className="chat-head">

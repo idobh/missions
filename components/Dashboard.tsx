@@ -6,6 +6,7 @@ import { api, useAgentScope, useStore } from "./store";
 import { DueLabel, Icon, PriorityBadge, ViewIcon } from "./ui";
 import type { SpaceStats, Task } from "@/lib/types";
 import { HEB_DAYS, HEB_MONTHS, todayISO, dayOfWeek } from "@/lib/dates";
+import { DesignDashboard } from "./ab/designs";
 
 interface DashData {
   today: string;
@@ -16,7 +17,7 @@ interface DashData {
 }
 
 export function Dashboard() {
-  const { spaces, spacesLoaded, version, openTask, setSpaceModal } = useStore();
+  const { spaces, spacesLoaded, version, openTask, setSpaceModal, design, setChatOpen } = useStore();
   const setScope = useAgentScope();
   const [selected, setSelected] = useState<number[] | null>(null); // null = not loaded yet
   const [data, setData] = useState<DashData | null>(null);
@@ -54,6 +55,26 @@ export function Dashboard() {
   const today = todayISO();
   const [, m, d] = today.split("-").map(Number);
   const spaceOf = (id: number) => spaces.find((s) => s.id === id);
+  const dateLine = `יום ${HEB_DAYS[dayOfWeek(today)]}, ${d} ב${HEB_MONTHS[m - 1]}`;
+
+  if (design !== "orig") {
+    const sel = selected ?? [];
+    const statsOf = (id: number) => data?.stats.find((x) => x.space_id === id);
+    return (
+      <DesignDashboard design={design} model={{
+        dateLine, spaces, selected: sel, toggle, spaceOf, statsOf, openTask,
+        shownSpaces: spaces.filter((s) => sel.includes(s.id)),
+        totalOpen: spaces.filter((s) => sel.includes(s.id)).reduce((n, s) => n + (statsOf(s.id)?.open ?? 0), 0),
+        panels: [
+          { key: "urgent", title: "דחוף", tasks: data?.urgent, empty: "אין משימות דחופות" },
+          { key: "today", title: "להיום", tasks: data?.dueToday, empty: "אין משימות להיום" },
+          { key: "late", title: "באיחור", tasks: data?.overdue, empty: "אין משימות באיחור 🎉" },
+        ],
+        newSpace: () => setSpaceModal({ mode: "create" }),
+        openAgent: () => setChatOpen(true),
+      }} />
+    );
+  }
 
   return (
     <div className="page">
@@ -61,7 +82,7 @@ export function Dashboard() {
         <div className="page-title-wrap">
           <div>
             <h1 className="page-title">שלום! 👋</h1>
-            <p className="page-sub">יום {HEB_DAYS[dayOfWeek(today)]}, {d} ב{HEB_MONTHS[m - 1]}</p>
+            <p className="page-sub">{dateLine}</p>
           </div>
         </div>
       </header>
